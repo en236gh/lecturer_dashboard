@@ -1,26 +1,115 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f3f4f6;
+  --surface: #f3f4f6;
+  --surface-muted: #eceff3;
+  --foreground: #0b0f19;
+  --ink: #0b0f19;
+  --muted: #6b7280;
+  --unza-gold: #f7a81b;
+  --unza-green: #008b45;
+  --unza-red: #ed1c24;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-unza-gold: var(--unza-gold);
+  --color-unza-green: var(--unza-green);
+  --color-unza-red: var(--unza-red);
+  --font-sans: var(--font-inter);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --shadow-panel: 0 10px 30px rgba(15, 23, 42, 0.04);
+  --shadow-sidebar: 8px 0 30px rgba(15, 23, 42, 0.04);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.bg-app {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(circle at 94% 0%, rgba(247, 168, 27, 0.12), transparent 28rem),
+    radial-gradient(circle at 3% 100%, rgba(0, 139, 69, 0.08), transparent 32rem);
+  background-attachment: fixed;
+}
+
+.auth-input {
+  display: block;
+  height: 44px;
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: white;
+  padding: 0 14px;
+  font-size: 14px;
+  outline: none;
+}
+
+.auth-input:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(11, 15, 25, 0.08);
+}
+
+.field {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  padding-left: 14px;
+  padding-right: 14px;
+  font-size: 14px;
+  outline: none;
+  transition: 0.2s ease;
+}
+
+.field:focus {
+  border-color: rgba(11, 15, 25, 0.2);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(11, 15, 25, 0.05);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none;
+  }
 }
