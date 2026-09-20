@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const backendOrigin = process.env.BACKEND_URL ?? "http://localhost:8080";
+const backendOrigin = process.env.BACKEND_URL ?? "https://fourth-91rl.onrender.com";
 
 const nextConfig: NextConfig = {
   async rewrites() {
