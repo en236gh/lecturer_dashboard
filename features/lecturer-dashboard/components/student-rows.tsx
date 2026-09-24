@@ -6,7 +6,6 @@ type StudentRow = {
   name: string;
   meta?: string;
   venueName?: string;
-  seat?: string;
 };
 
 export function StudentRows({
@@ -46,9 +45,6 @@ export function StudentRows({
           {allocation ? (
             <div className="text-right">
               <p className="text-sm font-medium">{student.venueName ?? "Unassigned"}</p>
-              <p className="font-mono text-xs text-muted">
-                {student.seat ? `Seat ${student.seat}` : "No seat"}
-              </p>
             </div>
           ) : (
             <Badge status="Registered" />

@@ -77,7 +77,6 @@ export type StudentAllocation = {
   studentName: string;
   venueId: number;
   venueName: string;
-  seatNumber: string;
 };
 
 export type AllocationStats = {
@@ -394,7 +393,7 @@ export function getAllocationStats(examSessionId: number) {
 }
 
 export function allocateStudents(examSessionId: number) {
-  return apiRequest<{ computerNumber: string; examSessionId: number; venueId: number; seatNumber: string }[]>(
+  return apiRequest<{ computerNumber: string; examSessionId: number; venueId: number }[]>(
     `/api/allocation/exam-session/${examSessionId}`,
     { method: "POST" },
     false,
@@ -409,9 +408,10 @@ export function getAttendanceSummary(examSessionId: number) {
   return apiRequest<AttendanceSummary>(`/api/attendance/exam/${examSessionId}/summary`);
 }
 
-export async function downloadReport(examSessionId: number) {
+export async function downloadReport(examSessionId: number, signal?: AbortSignal) {
   const response = await authorizedFetch(`/api/reports/exam-session/${examSessionId}/pdf`, {
     headers: { Accept: "application/pdf" },
+    signal,
   });
 
   if (!response.ok) {
@@ -420,6 +420,7 @@ export async function downloadReport(examSessionId: number) {
   }
 
   const blob = await response.blob();
+  signal?.throwIfAborted();
   const disposition = response.headers.get("Content-Disposition");
   const filename =
     disposition?.match(/filename="([^"]+)"/)?.[1] ??

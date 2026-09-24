@@ -40,7 +40,7 @@ export function Dashboard({ go }: { go: (view: View) => void }) {
           accent="green"
         />
         <StatTile
-          title="Seat allocations"
+          title="Venue assignments"
           value={String(totals.allocatedStudents)}
           note={`${allocatedPercent} percent`}
           icon={<MapPinIcon className="h-6 w-6" />}
@@ -66,7 +66,7 @@ export function Dashboard({ go }: { go: (view: View) => void }) {
             },
             {
               title: "Generate a report",
-              copy: "Download combined attendance and incident records.",
+              copy: "Download attending students, absences and incidents in one PDF.",
               icon: ArrowDownTrayIcon,
               view: "reports" as View,
             },

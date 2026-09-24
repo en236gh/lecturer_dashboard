@@ -45,7 +45,7 @@ export function Exams() {
           </select>
         </label>)}
       </div> : <p className="mt-4 text-sm text-muted">No active curriculum rows are available. Your assigned examination sessions are listed below.</p>}
-      <p className="mt-4 rounded-[10px] bg-unza-green/5 p-3 text-sm text-unza-green">Curriculum filters help you find a course. Seat allocation includes all registered students for the selected examination’s course, academic year and semester, across majors.</p>
+      <p className="mt-4 rounded-[10px] bg-unza-green/5 p-3 text-sm text-unza-green">Curriculum filters help you find a course. Venue allocation includes all registered students for the selected examination’s course, academic year and semester, across majors.</p>
     </Panel>
     {filteredExams.length === 0 ? <Panel><EmptyState message="No examinations available for the selected curriculum or course. Try clearing the filters." /></Panel> : <ExamDetails key={selectedId ?? "none"} selectedId={selectedId} examIds={filteredExams.map(exam => exam.examSessionId)} onSelect={setSelectedId} onBusy={setBusy} refresh={refresh} denyExam={denyExam} />}
   </div>;
@@ -220,13 +220,13 @@ function ExamDetails({ selectedId, examIds, onSelect, onBusy, refresh, denyExam 
                   ? "Allocating…"
                   : confirm
                     ? "Confirm reallocation"
-                    : "Run automatic allocation"}
+                    : "Assign students to venues"}
               </button>
             </div>
             {(students.length === 0 || venues.length === 0) && <p role="status" className="mt-4 rounded-[10px] bg-unza-gold/10 p-3 text-sm">{students.length === 0 ? "No registered students found for this examination. " : ""}{venues.length === 0 ? "No venues linked to this examination. " : ""}Allocation is available once registrations and venues are ready.</p>}
             {confirm && (
               <p className="mt-3 rounded-[10px] bg-unza-red/5 p-3 text-sm text-unza-red">
-                This replaces every existing seat allocation. Select the button again to confirm.
+                This replaces every existing venue assignment for this examination. Select the button again to confirm.
               </p>
             )}
             <div className="mt-6 flex gap-1 overflow-x-auto border-b border-black/8">
@@ -310,7 +310,6 @@ function ExamDetails({ selectedId, examIds, onSelect, onBusy, refresh, denyExam 
                     computerNumber: row.computerNumber,
                     name: row.studentName,
                     venueName: row.venueName,
-                    seat: row.seatNumber,
                   }))}
                   emptyMessage="No students have been allocated yet."
                 />
