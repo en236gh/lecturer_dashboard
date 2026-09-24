@@ -8,7 +8,7 @@ const source = ts.transpileModule(readFileSync(new URL("../lib/api.ts", import.m
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 
-function client(fetch) {
+function client(fetch, browser = {}) {
   const values = new Map();
   const localStorage = {
     getItem: key => values.get(key) ?? null,
@@ -20,12 +20,61 @@ function client(fetch) {
     exports, fetch, localStorage, Headers, Response, atob, Event,
     window: { addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
     setInterval: () => 1, setTimeout: () => 1, clearInterval() {}, clearTimeout() {},
+    ...browser,
   });
   exports.saveSession("access", "refresh", "lecturer@example.com");
   return { api: exports, localStorage };
 }
 
 const response = (data, status = 200, message = "OK") => Response.json({ success: status === 200, message, data }, { status });
+
+test("venue allocation accepts assignments without numbered seats", async () => {
+  const assignments = [{ computerNumber: "2022004264", examSessionId: 22, venueId: 1 }];
+  const { api } = client(async (url, init) => {
+    assert.equal(url, "/api/allocation/exam-session/22");
+    assert.equal(init.method, "POST");
+    assert.equal(init.body, undefined);
+    return response(assignments);
+  });
+  assert.deepEqual(await api.allocateStudents(22), assignments);
+});
+
+test("report download saves raw PDF bytes with the backend filename", async () => {
+  let savedBlob;
+  let clicked = false;
+  let revoked;
+  const link = { click() { clicked = true; }, remove() {} };
+  const { api } = client(async (url, init) => {
+    assert.equal(url, "/api/reports/exam-session/22/pdf");
+    assert.equal(init.headers.get("Authorization"), "Bearer access");
+    assert.equal(init.headers.get("Accept"), "application/pdf");
+    return new Response("%PDF-1.7", { headers: { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="attendance-incidents-CS401-2026-08-23.pdf"' } });
+  }, {
+    document: { createElement: () => link, body: { appendChild() {} } },
+    URL: { createObjectURL(blob) { savedBlob = blob; return "blob:report"; }, revokeObjectURL(url) { revoked = url; } },
+  });
+  await api.downloadReport(22);
+  assert.equal(await savedBlob.text(), "%PDF-1.7");
+  assert.equal(link.download, "attendance-incidents-CS401-2026-08-23.pdf");
+  assert.equal(clicked, true);
+  assert.equal(revoked, "blob:report");
+});
+
+test("report ownership rejection never saves a file", async () => {
+  const { api } = client(async () => response(null, 403, "You are not assigned to this examination's course"), {
+    document: { createElement() { assert.fail("Must not create a download for an error response"); } },
+  });
+  await assert.rejects(api.downloadReport(22), error => error.status === 403 && /not assigned/.test(error.message));
+});
+
+test("a report finishing after its screen is closed is not saved", async () => {
+  const controller = new AbortController();
+  const { api } = client(async () => {
+    controller.abort();
+    return new Response("%PDF-1.7");
+  }, { document: { createElement() { assert.fail("Must not save an abandoned report"); } } });
+  await assert.rejects(api.downloadReport(22, controller.signal), error => error.name === "AbortError");
+});
 
 test("curriculum hierarchy uses the token and preserves nullable major fields", async () => {
   const rows = [{ school_id: 1, programme_id: 2, major_id: null, course_code: "CSC1202" }];

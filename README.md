@@ -38,7 +38,11 @@ The examination page loads `/api/exams/my-course-hierarchy` and provides school,
 
 After sign-in, the app loads assigned course codes, permitted exam sessions, and dashboard totals using the current access token. Course/exam data is held in memory within the signed-in account's UI and cleared on logout or account change. Exam detail state is scoped to the selected exam session; changing sessions discards the previous details and ignores late responses.
 
-Seat allocation requires an explicit confirmation. It sends a bodyless POST with the exam session ID, disables controls while pending, and never automatically retries that POST. Successful allocation refreshes the details and dashboard. Ownership errors remove the inaccessible exam and refresh the shared selector; other backend error messages are displayed.
+Venue allocation requires an explicit confirmation. It sends a bodyless POST with the exam session ID, disables controls while pending, and never automatically retries that POST. Successful allocation refreshes the details and dashboard. Ownership errors remove the inaccessible exam and refresh the shared selector; other backend error messages are displayed. Students are assigned to venues without numbered seats.
+
+The lecturer report downloads one authenticated PDF containing attending students (PRESENT, LATE and WRONG_VENUE), recorded absences, and incidents across venues, with the backend-provided filename and UNZA branding. The report screen shows section counts and warns when the examination is not completed. Downloading does not create absence records; complete the examination using the existing end-examination process before downloading the final report.
+
+Apply backend migration `V31__remove_seat_numbers.sql` after earlier migrations and legacy seeds before using the updated backend. Flyway is disabled, so restarting does not apply it. Database migrations and PDF generation are owned by the backend and are not executed by this frontend.
 
 Run API regression checks with `node --test tests/api.test.mjs`, type checks with `npx tsc --noEmit`, and lint with `npm run lint`.
 
