@@ -28,17 +28,6 @@ function client(fetch, browser = {}) {
 
 const response = (data, status = 200, message = "OK") => Response.json({ success: status === 200, message, data }, { status });
 
-test("venue allocation accepts assignments without numbered seats", async () => {
-  const assignments = [{ computerNumber: "2022004264", examSessionId: 22, venueId: 1 }];
-  const { api } = client(async (url, init) => {
-    assert.equal(url, "/api/allocation/exam-session/22");
-    assert.equal(init.method, "POST");
-    assert.equal(init.body, undefined);
-    return response(assignments);
-  });
-  assert.deepEqual(await api.allocateStudents(22), assignments);
-});
-
 test("report download saves raw PDF bytes with the backend filename", async () => {
   let savedBlob;
   let clicked = false;
@@ -109,21 +98,6 @@ test("assigned courses use the current token without lecturer identity parameter
   });
   assert.deepEqual(await api.listAssignedCourses(), ["CSC1202", "MAT1100"]);
 });
-
-for (const status of [400, 401, 403, 409]) {
-  test(`allocation sends one bodyless POST and preserves HTTP ${status}`, async () => {
-    let calls = 0;
-    const { api } = client(async (url, init) => {
-      calls++;
-      assert.equal(url, "/api/allocation/exam-session/22");
-      assert.equal(init.method, "POST");
-      assert.equal(init.body, undefined);
-      return response(null, status, "Backend explanation");
-    });
-    await assert.rejects(api.allocateStudents(22), error => error instanceof api.ApiError && error.status === status && error.message === "Backend explanation");
-    assert.equal(calls, 1);
-  });
-}
 
 test("read requests retain the existing refresh-and-retry behavior", async () => {
   const urls = [];

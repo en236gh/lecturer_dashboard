@@ -392,14 +392,6 @@ export function getAllocationStats(examSessionId: number) {
   return apiRequest<AllocationStats>(`/api/allocation/exam-session/${examSessionId}`);
 }
 
-export function allocateStudents(examSessionId: number) {
-  return apiRequest<{ computerNumber: string; examSessionId: number; venueId: number }[]>(
-    `/api/allocation/exam-session/${examSessionId}`,
-    { method: "POST" },
-    false,
-  );
-}
-
 export function getAttendance(examSessionId: number) {
   return apiRequest<AttendanceRecord[]>(`/api/attendance/exam/${examSessionId}`);
 }
