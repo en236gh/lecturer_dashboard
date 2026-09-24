@@ -9,59 +9,14 @@ import {
   MapPinIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
-import {
-  getLecturerDashboard,
-  listExams,
-  type ExamSession,
-  type LecturerDashboardTotals,
-} from "@/lib/api";
+import { useLecturer } from "../lecturer-context";
 import type { View } from "../types";
 import { ExamCard } from "./exam-card";
-import { ErrorState, LoadingState } from "./states";
 import { StatTile } from "./stat-tile";
 
 export function Dashboard({ go }: { go: (view: View) => void }) {
-  const [totals, setTotals] = useState<LecturerDashboardTotals | null>(null);
-  const [exams, setExams] = useState<ExamSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError("");
-      try {
-        const [dashboard, examList] = await Promise.all([
-          getLecturerDashboard(),
-          listExams(),
-        ]);
-        if (cancelled) return;
-        setTotals(dashboard as LecturerDashboardTotals);
-        setExams(
-          examList.filter((exam) => exam.status !== "COMPLETED").slice(0, 3),
-        );
-      } catch (reason) {
-        if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Could not load dashboard.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
-  if (loading) return <LoadingState label="Loading dashboard…" />;
-  if (error) return <ErrorState message={error} onRetry={() => setReloadKey((k) => k + 1)} />;
-  if (!totals) return <ErrorState message="No dashboard data available." />;
+  const { totals, exams: allExams } = useLecturer();
+  const exams = allExams.filter(exam => exam.status !== "COMPLETED").slice(0, 3);
 
   const allocatedPercent =
     totals.registeredStudents > 0
@@ -74,18 +29,18 @@ export function Dashboard({ go }: { go: (view: View) => void }) {
         <StatTile
           title="Total examinations"
           value={String(totals.totalExaminations).padStart(2, "0")}
-          note="This semester"
+          note="Across your assigned courses"
           icon={<AcademicCapIcon className="h-6 w-6" />}
         />
         <StatTile
-          title="Registered students"
+          title="Exam registrations"
           value={String(totals.registeredStudents)}
-          note="Across courses"
+          note="Counted per examination session"
           icon={<UsersIcon className="h-6 w-6" />}
           accent="green"
         />
         <StatTile
-          title="Students allocated"
+          title="Seat allocations"
           value={String(totals.allocatedStudents)}
           note={`${allocatedPercent} percent`}
           icon={<MapPinIcon className="h-6 w-6" />}

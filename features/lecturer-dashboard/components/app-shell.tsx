@@ -17,6 +17,7 @@ import { Brand } from "./brand";
 import { Dashboard } from "./dashboard";
 import { Exams } from "./exams";
 import { Reports } from "./reports";
+import { LecturerProvider } from "../lecturer-context";
 
 export function AppShell({ onSignOut }: { onSignOut: () => void }) {
   const [view, setView] = useState<View>("dashboard");
@@ -116,10 +117,12 @@ export function AppShell({ onSignOut }: { onSignOut: () => void }) {
             </div>
           </div>
         </header>
-        {view === "dashboard" && <Dashboard go={navigate} />}
-        {view === "exams" && <Exams />}
-        {view === "attendance" && <AttendancePage />}
-        {view === "reports" && <Reports />}
+        <LecturerProvider>
+          {view === "dashboard" && <Dashboard go={navigate} />}
+          {view === "exams" && <Exams />}
+          {view === "attendance" && <AttendancePage />}
+          {view === "reports" && <Reports />}
+        </LecturerProvider>
       </main>
       <Toaster position="top-right" richColors closeButton />
     </div>

@@ -9,10 +9,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getAttendance,
   getAttendanceSummary,
-  listExams,
+  ApiError,
   type AttendanceRecord,
   type AttendanceSummary,
-  type ExamSession,
 } from "@/lib/api";
 import {
   formatDate,
@@ -22,56 +21,30 @@ import {
 } from "../format";
 import { Badge } from "./badge";
 import { MiniStat } from "./mini-stat";
+import { useLecturer } from "../lecturer-context";
 import { Panel } from "./panel";
 import { EmptyState, ErrorState, LoadingState } from "./states";
 
 const POLL_MS = 15000;
 
 export function AttendancePage() {
-  const [exams, setExams] = useState<ExamSession[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { exams } = useLecturer();
+  const [requestedId, setSelectedId] = useState<number | null>(null);
+  const selectedId = exams.find(exam => exam.examSessionId === requestedId)?.examSessionId ?? exams[0]?.examSessionId ?? null;
+  return <AttendancePageDetails key={selectedId ?? "none"} selectedId={selectedId} setSelectedId={setSelectedId} />;
+}
+
+function AttendancePageDetails({ selectedId, setSelectedId }: { selectedId: number | null; setSelectedId: (id: number) => void }) {
+  const { exams, denyExam } = useLecturer();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("ALL");
-  const [loadingExams, setLoadingExams] = useState(true);
-  const [loadingData, setLoadingData] = useState(false);
-  const [examsError, setExamsError] = useState("");
+  const [loadingData, setLoadingData] = useState(true);
   const [dataError, setDataError] = useState("");
-  const [reloadExamsKey, setReloadExamsKey] = useState(0);
   const [reloadDataKey, setReloadDataKey] = useState(0);
 
   const selected = exams.find((exam) => exam.examSessionId === selectedId) ?? null;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadExams() {
-      setLoadingExams(true);
-      setExamsError("");
-      try {
-        const data = await listExams();
-        if (cancelled) return;
-        setExams(data);
-        const preferred =
-          data.find((exam) => exam.status === "IN_PROGRESS") ??
-          data.find((exam) => exam.status === "SCHEDULED") ??
-          data[0];
-        setSelectedId((current) => current ?? preferred?.examSessionId ?? null);
-      } catch (reason) {
-        if (!cancelled) {
-          setExamsError(reason instanceof Error ? reason.message : "Could not load examinations.");
-        }
-      } finally {
-        if (!cancelled) setLoadingExams(false);
-      }
-    }
-
-    void loadExams();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadExamsKey]);
 
   useEffect(() => {
     if (selectedId == null) return;
@@ -82,6 +55,8 @@ export function AttendancePage() {
       if (!silent) {
         setLoadingData(true);
         setDataError("");
+        setRecords([]);
+        setSummary(null);
       }
       try {
         const [attendance, attendanceSummary] = await Promise.all([
@@ -89,15 +64,20 @@ export function AttendancePage() {
           getAttendanceSummary(selectedId!),
         ]);
         if (cancelled) return;
+        setDataError("");
         setRecords(attendance);
         setSummary(attendanceSummary);
       } catch (reason) {
-        if (!cancelled && !silent) {
+        if (!cancelled) {
           setDataError(
             reason instanceof Error ? reason.message : "Could not load attendance.",
           );
           setRecords([]);
           setSummary(null);
+          if (reason instanceof ApiError && reason.status === 403) {
+            if (timer) clearInterval(timer);
+            denyExam(selectedId!, reason.message);
+          }
         }
       } finally {
         if (!cancelled && !silent) setLoadingData(false);
@@ -116,7 +96,7 @@ export function AttendancePage() {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [selectedId, selected?.status, reloadDataKey]);
+  }, [selectedId, selected?.status, reloadDataKey, denyExam]);
 
   const list = useMemo(
     () =>
@@ -130,10 +110,6 @@ export function AttendancePage() {
     [records, query, filter],
   );
 
-  if (loadingExams) return <LoadingState label="Loading examinations…" />;
-  if (examsError) {
-    return <ErrorState message={examsError} onRetry={() => setReloadExamsKey((k) => k + 1)} />;
-  }
   if (exams.length === 0) {
     return <EmptyState message="No examination sessions are available." />;
   }
@@ -154,7 +130,7 @@ export function AttendancePage() {
           >
             {exams.map((exam) => (
               <option key={exam.examSessionId} value={exam.examSessionId}>
-                {exam.courseCode} — {formatDate(exam.examDate)} ({exam.status.replaceAll("_", " ")})
+                {exam.courseCode} — {formatDate(exam.examDate)} {formatTime(exam.startTime)}–{formatTime(exam.endTime)} ({exam.status.replaceAll("_", " ")})
               </option>
             ))}
           </select>

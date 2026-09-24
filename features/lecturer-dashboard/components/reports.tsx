@@ -8,17 +8,22 @@ import {
   getAttendanceSummary,
   getAllocationStats,
   listExamVenues,
-  listExams,
-  type ExamSession,
+  ApiError,
 } from "@/lib/api";
 import { formatDate, formatExamType, formatTime } from "../format";
+import { useLecturer } from "../lecturer-context";
 import { Panel } from "./panel";
-import { EmptyState, ErrorState, LoadingState } from "./states";
+import { EmptyState, ErrorState } from "./states";
 
 export function Reports() {
-  const [exams, setExams] = useState<ExamSession[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { exams } = useLecturer();
+  const [requestedId, setSelectedId] = useState<number | null>(null);
+  const selectedId = exams.find(exam => exam.examSessionId === requestedId)?.examSessionId ?? exams[0]?.examSessionId ?? null;
+  return <ReportsDetails key={selectedId ?? "none"} selectedId={selectedId} setSelectedId={setSelectedId} />;
+}
+
+function ReportsDetails({ selectedId, setSelectedId }: { selectedId: number | null; setSelectedId: (id: number) => void }) {
+  const { exams, denyExam } = useLecturer();
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<{
@@ -31,39 +36,12 @@ export function Reports() {
   const selected = exams.find((exam) => exam.examSessionId === selectedId) ?? null;
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadExams() {
-      setLoading(true);
-      setError("");
-      try {
-        const data = await listExams();
-        if (cancelled) return;
-        setExams(data);
-        setSelectedId((current) => current ?? data[0]?.examSessionId ?? null);
-      } catch (reason) {
-        if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Could not load examinations.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadExams();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
-  useEffect(() => {
-    if (selectedId == null) {
-      setPreview(null);
-      return;
-    }
+    if (selectedId == null) return;
     let cancelled = false;
 
     async function loadPreview() {
+      setPreview(null);
+      setError("");
       try {
         const [allocation, venues, summary] = await Promise.all([
           getAllocationStats(selectedId!),
@@ -76,13 +54,11 @@ export function Reports() {
           venue: venues[0]?.venueName ?? "No venue assigned",
           attendanceRecords: summary.checkedIn + summary.absent,
         });
-      } catch {
+      } catch (reason) {
         if (!cancelled) {
-          setPreview({
-            registered: 0,
-            venue: "Unavailable",
-            attendanceRecords: 0,
-          });
+          setPreview(null);
+          setError(reason instanceof Error ? reason.message : "Could not load report details.");
+          if (reason instanceof ApiError && reason.status === 403) denyExam(selectedId!, reason.message);
         }
       }
     }
@@ -91,7 +67,7 @@ export function Reports() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, reloadKey, denyExam]);
 
   async function download() {
     if (selectedId == null) return;
@@ -101,12 +77,12 @@ export function Reports() {
       toast.success("Report downloaded");
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "Could not download report");
+      if (reason instanceof ApiError && reason.status === 403) denyExam(selectedId!, reason.message);
     } finally {
       setDownloading(false);
     }
   }
 
-  if (loading) return <LoadingState label="Loading examinations…" />;
   if (error) return <ErrorState message={error} onRetry={() => setReloadKey((k) => k + 1)} />;
   if (exams.length === 0) {
     return <EmptyState message="No examination sessions are available." />;
@@ -128,7 +104,7 @@ export function Reports() {
           >
             {exams.map((exam) => (
               <option key={exam.examSessionId} value={exam.examSessionId}>
-                {exam.courseCode} — {formatDate(exam.examDate)} · {formatExamType(exam.examType)}
+                {exam.courseCode} — {formatDate(exam.examDate)} {formatTime(exam.startTime)}–{formatTime(exam.endTime)} · {formatExamType(exam.examType)}
               </option>
             ))}
           </select>
@@ -140,7 +116,7 @@ export function Reports() {
         </div>
         <button
           onClick={download}
-          disabled={downloading || selectedId == null}
+          disabled={downloading || selectedId == null || preview == null}
           className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-ink px-4 text-sm font-medium text-white disabled:opacity-60"
         >
           <ArrowDownTrayIcon className="h-5 w-5" />

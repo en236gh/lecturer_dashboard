@@ -19,11 +19,35 @@ export type ExamSession = {
 };
 
 export type LecturerDashboardTotals = {
+  courseCodes: string[];
   totalExaminations: number;
   registeredStudents: number;
   allocatedStudents: number;
   message?: string;
 };
+
+export type CourseHierarchyRow = {
+  school_id: number;
+  school_name: string;
+  programme_id: number;
+  programme_code: string;
+  programme_name: string;
+  major_id: number | null;
+  major_code: string | null;
+  major_name: string | null;
+  programme_course_id: number;
+  year_of_study: number;
+  semester: number;
+  course_code: string;
+  course_name: string;
+};
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 export type RegisteredStudent = {
   computerNumber: string;
@@ -197,6 +221,7 @@ export function saveSession(accessToken: string, refreshToken: string, email?: s
   if (email) localStorage.setItem(EMAIL_KEY, email);
   scheduleProactiveRefresh();
   startSessionKeepAlive();
+  if (email) window.dispatchEvent(new Event("unza-account-changed"));
 }
 
 export function clearSession() {
@@ -235,6 +260,10 @@ async function refreshSession() {
       throw new Error("Could not reach the server to refresh your session.");
     }
 
+    if (localStorage.getItem(REFRESH_TOKEN_KEY) !== refreshToken) {
+      throw new Error("The signed-in account changed. Please try again.");
+    }
+
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
         clearSession();
@@ -247,6 +276,9 @@ async function refreshSession() {
       accessToken: string;
       refreshToken: string;
     }>;
+    if (localStorage.getItem(REFRESH_TOKEN_KEY) !== refreshToken) {
+      throw new Error("The signed-in account changed. Please try again.");
+    }
     saveSession(result.data.accessToken, result.data.refreshToken);
     return result.data.accessToken;
   })().finally(() => {
@@ -287,7 +319,7 @@ async function authorizedFetch(path: string, init: RequestInit = {}, retry = tru
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, { ...init, headers });
+  const response = await fetch(path, { ...init, headers, cache: "no-store" });
   if (response.status === 401 && retry && hasSession()) {
     const nextToken = await refreshSession();
     headers.set("Authorization", `Bearer ${nextToken}`);
@@ -302,12 +334,12 @@ if (typeof window !== "undefined" && hasSession()) {
   scheduleProactiveRefresh();
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await authorizedFetch(path, init);
+export async function apiRequest<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const response = await authorizedFetch(path, init, retry);
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.message ?? `Request failed (${response.status})`);
+    throw new ApiError(error?.message ?? `Request failed (${response.status})`, response.status);
   }
 
   const result = (await response.json()) as ApiEnvelope<T>;
@@ -328,6 +360,8 @@ export function activateAccount(identifier: string, password: string, confirmPas
   });
 }
 
+export function getLecturerDashboard(): Promise<LecturerDashboardTotals>;
+export function getLecturerDashboard(examSessionId: number): Promise<{ examSessionId: number; allocation: AllocationStats }>;
 export function getLecturerDashboard(examSessionId?: number) {
   const query = examSessionId ? `?examSessionId=${examSessionId}` : "";
   return apiRequest<LecturerDashboardTotals | { examSessionId: number; allocation: AllocationStats }>(
@@ -337,6 +371,14 @@ export function getLecturerDashboard(examSessionId?: number) {
 
 export function listExams() {
   return apiRequest<ExamSession[]>("/api/exams");
+}
+
+export function listAssignedCourses() {
+  return apiRequest<string[]>("/api/exams/my-courses");
+}
+
+export function listCourseHierarchy() {
+  return apiRequest<CourseHierarchyRow[]>("/api/exams/my-course-hierarchy");
 }
 
 export function listRegisteredStudents(examSessionId: number) {
@@ -355,6 +397,7 @@ export function allocateStudents(examSessionId: number) {
   return apiRequest<{ computerNumber: string; examSessionId: number; venueId: number; seatNumber: string }[]>(
     `/api/allocation/exam-session/${examSessionId}`,
     { method: "POST" },
+    false,
   );
 }
 
@@ -373,7 +416,7 @@ export async function downloadReport(examSessionId: number) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.message ?? "Could not generate the report");
+    throw new ApiError(error?.message ?? "Could not generate the report", response.status);
   }
 
   const blob = await response.blob();

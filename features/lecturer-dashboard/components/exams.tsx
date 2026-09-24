@@ -1,20 +1,21 @@
 "use client";
 
 import { BuildingOffice2Icon } from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   allocateStudents,
   getAllocationStats,
   listExamVenues,
-  listExams,
+  ApiError,
   listRegisteredStudents,
   type AllocationStats,
-  type ExamSession,
   type ExamVenue,
   type RegisteredStudent,
 } from "@/lib/api";
 import { allocationPercent, formatDate, formatExamType, formatTime } from "../format";
+import { useLecturer } from "../lecturer-context";
+import { curriculumLevels, curriculumOptions, filterCurriculum } from "../course-filters";
 import { Badge } from "./badge";
 import { MiniStat } from "./mini-stat";
 import { Panel } from "./panel";
@@ -22,50 +23,56 @@ import { EmptyState, ErrorState, LoadingState } from "./states";
 import { StudentRows } from "./student-rows";
 
 export function Exams() {
-  const [exams, setExams] = useState<ExamSession[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { exams, hierarchy, refresh, denyExam } = useLecturer();
+  const [filters, setFilters] = useState<string[]>(["", "", "", "", ""]);
+  const [busy, setBusy] = useState(false);
+  const [requestedId, setSelectedId] = useState<number | null>(null);
+  const courseCodes = new Set(filterCurriculum(hierarchy, filters).map(row => row.course_code));
+  const filteredExams = filters.some(Boolean) ? exams.filter(exam => courseCodes.has(exam.courseCode)) : exams;
+  const selectedId = filteredExams.find(exam => exam.examSessionId === requestedId)?.examSessionId ?? filteredExams[0]?.examSessionId ?? null;
+  return <div className="space-y-5">
+    <Panel>
+      <div className="flex items-start justify-between gap-4">
+        <div><h2 className="text-lg font-semibold">Find your examination</h2><p className="mt-1 text-sm text-muted">Browse your assigned courses by curriculum, then choose an examination session.</p></div>
+        <button disabled={busy || !filters.some(Boolean)} onClick={() => { setFilters(["", "", "", "", ""]); setSelectedId(null); }} className="shrink-0 text-sm font-medium text-unza-green disabled:opacity-40">Clear filters</button>
+      </div>
+      {hierarchy.length ? <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {curriculumLevels.map((label, level) => <label key={label} className="min-w-0 text-xs font-semibold text-muted">
+          {label}
+          <select value={filters[level]} disabled={busy} onChange={event => { setFilters(current => current.map((value, index) => index < level ? value : index === level ? event.target.value : "")); setSelectedId(null); }} className="field mt-2 h-11 w-full text-ink disabled:opacity-50">
+            <option value="">All {label.toLowerCase() === "year / semester" ? "years / semesters" : label.toLowerCase() === "major" ? "majors / no major" : `${label.toLowerCase()}s`}</option>
+            {curriculumOptions(hierarchy, filters, level).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+          </select>
+        </label>)}
+      </div> : <p className="mt-4 text-sm text-muted">No active curriculum rows are available. Your assigned examination sessions are listed below.</p>}
+      <p className="mt-4 rounded-[10px] bg-unza-green/5 p-3 text-sm text-unza-green">Curriculum filters help you find a course. Seat allocation includes all registered students for the selected examination’s course, academic year and semester, across majors.</p>
+    </Panel>
+    {filteredExams.length === 0 ? <Panel><EmptyState message="No examinations available for the selected curriculum or course. Try clearing the filters." /></Panel> : <ExamDetails key={selectedId ?? "none"} selectedId={selectedId} examIds={filteredExams.map(exam => exam.examSessionId)} onSelect={setSelectedId} onBusy={setBusy} refresh={refresh} denyExam={denyExam} />}
+  </div>;
+}
+
+function ExamDetails({ selectedId, examIds, onSelect, onBusy, refresh, denyExam }: { selectedId: number | null; examIds: number[]; onSelect: (id: number) => void; onBusy: (busy: boolean) => void; refresh: () => Promise<void>; denyExam: (id: number, message: string) => void }) {
+  const { exams: allExams, hierarchy } = useLecturer();
+  const exams = allExams.filter(exam => examIds.includes(exam.examSessionId));
+  const active = useRef(true);
+  const allocationPending = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
   const [tab, setTab] = useState<"overview" | "students" | "venues" | "allocation">(
     "overview",
   );
   const [confirm, setConfirm] = useState(false);
   const [allocating, setAllocating] = useState(false);
-  const [loadingList, setLoadingList] = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [listError, setListError] = useState("");
+  const [loadingDetail, setLoadingDetail] = useState(true);
   const [detailError, setDetailError] = useState("");
   const [students, setStudents] = useState<RegisteredStudent[]>([]);
   const [venues, setVenues] = useState<ExamVenue[]>([]);
   const [allocation, setAllocation] = useState<AllocationStats | null>(null);
-  const [reloadListKey, setReloadListKey] = useState(0);
   const [reloadDetailKey, setReloadDetailKey] = useState(0);
 
   const selected = exams.find((exam) => exam.examSessionId === selectedId) ?? null;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadExams() {
-      setLoadingList(true);
-      setListError("");
-      try {
-        const data = await listExams();
-        if (cancelled) return;
-        setExams(data);
-        setSelectedId((current) => current ?? data[0]?.examSessionId ?? null);
-      } catch (reason) {
-        if (!cancelled) {
-          setListError(reason instanceof Error ? reason.message : "Could not load examinations.");
-        }
-      } finally {
-        if (!cancelled) setLoadingList(false);
-      }
-    }
-
-    void loadExams();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadListKey]);
 
   useEffect(() => {
     if (selectedId == null) return;
@@ -75,6 +82,9 @@ export function Exams() {
       setLoadingDetail(true);
       setDetailError("");
       setConfirm(false);
+      setStudents([]);
+      setVenues([]);
+      setAllocation(null);
       try {
         const [registered, examVenues, stats] = await Promise.all([
           listRegisteredStudents(selectedId!),
@@ -93,6 +103,7 @@ export function Exams() {
           setStudents([]);
           setVenues([]);
           setAllocation(null);
+          if (reason instanceof ApiError && reason.status === 403) denyExam(selectedId!, reason.message);
         }
       } finally {
         if (!cancelled) setLoadingDetail(false);
@@ -103,30 +114,33 @@ export function Exams() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, reloadDetailKey]);
+  }, [selectedId, reloadDetailKey, denyExam]);
 
   async function allocate() {
-    if (!selected) return;
+    if (!selected || allocationPending.current || loadingDetail || detailError) return;
     if (!confirm) return setConfirm(true);
+    allocationPending.current = true;
+    onBusy(true);
     setAllocating(true);
     try {
       await allocateStudents(selected.examSessionId);
+      await refresh();
+      if (!active.current) return;
       toast.success("Students allocated successfully");
       setReloadDetailKey((key) => key + 1);
     } catch (reason) {
+      if (!active.current) return;
       toast.error(reason instanceof Error ? reason.message : "Allocation failed");
+      if (reason instanceof ApiError && reason.status === 403) {
+        setStudents([]); setVenues([]); setAllocation(null);
+        setDetailError(reason.message);
+        denyExam(selectedId!, reason.message);
+      }
     } finally {
-      setAllocating(false);
-      setConfirm(false);
+      allocationPending.current = false;
+      onBusy(false);
+      if (active.current) { setAllocating(false); setConfirm(false); }
     }
-  }
-
-  if (loadingList) return <LoadingState label="Loading examinations…" />;
-  if (listError) {
-    return <ErrorState message={listError} onRetry={() => setReloadListKey((k) => k + 1)} />;
-  }
-  if (exams.length === 0) {
-    return <EmptyState message="No examination sessions are available." />;
   }
 
   const registeredCount = allocation?.registeredStudents ?? students.length;
@@ -142,7 +156,9 @@ export function Exams() {
           {exams.map((exam) => (
             <button
               key={exam.examSessionId}
-              onClick={() => setSelectedId(exam.examSessionId)}
+              onClick={() => onSelect(exam.examSessionId)}
+              aria-pressed={selected?.examSessionId === exam.examSessionId}
+              disabled={allocating}
               className={`w-full rounded-[10px] p-4 text-left transition ${
                 selected?.examSessionId === exam.examSessionId
                   ? "bg-ink text-white"
@@ -162,7 +178,7 @@ export function Exams() {
                 </span>
               </div>
               <p className="mt-1 truncate text-sm font-medium">
-                {formatExamType(exam.examType)} · Sem {exam.semester}
+                {formatTime(exam.startTime)}–{formatTime(exam.endTime)} · {formatExamType(exam.examType)} · Sem {exam.semester}
               </p>
             </button>
           ))}
@@ -186,17 +202,17 @@ export function Exams() {
                   <Badge status={selected.status} />
                 </div>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight">
-                  {formatExamType(selected.examType)}
+                  {hierarchy.find(row => row.course_code === selected.courseCode)?.course_name ?? formatExamType(selected.examType)}
                 </h2>
                 <p className="mt-1 text-sm text-muted">
                   {formatDate(selected.examDate)} · {formatTime(selected.startTime)}–
-                  {formatTime(selected.endTime)} · {selected.academicYear}
+                  {formatTime(selected.endTime)} · {selected.academicYear} · Semester {selected.semester} · {formatExamType(selected.examType)}
                 </p>
               </div>
               <button
                 onClick={allocate}
-                disabled={allocating}
-                className={`h-11 rounded-[10px] px-4 text-sm font-medium text-white transition ${
+                disabled={allocating || students.length === 0 || venues.length === 0}
+                className={`h-11 rounded-[10px] px-4 text-sm font-medium text-white transition disabled:opacity-50 ${
                   confirm ? "bg-[#b91c1c]" : "bg-ink"
                 }`}
               >
@@ -207,6 +223,7 @@ export function Exams() {
                     : "Run automatic allocation"}
               </button>
             </div>
+            {(students.length === 0 || venues.length === 0) && <p role="status" className="mt-4 rounded-[10px] bg-unza-gold/10 p-3 text-sm">{students.length === 0 ? "No registered students found for this examination. " : ""}{venues.length === 0 ? "No venues linked to this examination. " : ""}Allocation is available once registrations and venues are ready.</p>}
             {confirm && (
               <p className="mt-3 rounded-[10px] bg-unza-red/5 p-3 text-sm text-unza-red">
                 This replaces every existing seat allocation. Select the button again to confirm.

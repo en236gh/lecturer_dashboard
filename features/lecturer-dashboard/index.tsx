@@ -10,6 +10,7 @@ import { AppShellSkeleton } from "./components/skeleton";
 export default function LecturerDashboard() {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [accountVersion, setAccountVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +42,24 @@ export default function LecturerDashboard() {
       setAuthenticated(false);
     }
     window.addEventListener("unza-session-cleared", onSessionCleared);
+    function onAccountChanged() {
+      setAccountVersion(version => version + 1);
+      setAuthenticated(hasSession());
+    }
+    function onStorage(event: StorageEvent) {
+      if (
+        event.key === null ||
+        event.key === "unza-lecturer-email" ||
+        (event.key === "unza-lecturer-refresh-token" && event.newValue === null)
+      ) onAccountChanged();
+    }
+    window.addEventListener("unza-account-changed", onAccountChanged);
+    window.addEventListener("storage", onStorage);
     return () => {
       cancelled = true;
       window.removeEventListener("unza-session-cleared", onSessionCleared);
+      window.removeEventListener("unza-account-changed", onAccountChanged);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
@@ -62,6 +78,7 @@ export default function LecturerDashboard() {
 
   return (
     <AppShell
+      key={accountVersion}
       onSignOut={() => {
         clearSession();
         setAuthenticated(false);
