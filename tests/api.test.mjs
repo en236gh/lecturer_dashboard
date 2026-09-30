@@ -171,3 +171,69 @@ for (const status of [200, 401]) {
     assert.equal(localStorage.getItem("unza-lecturer-email"), "other@example.com");
   });
 }
+
+test("selected dashboard preserves the allocation envelope and uses session ID", async () => {
+  const data = { examSessionId: 42, allocation: { registeredStudents: 7, invalidAllocationRecords: 2 } };
+  const { api } = client(async url => {
+    assert.equal(url, "/api/dashboard/lecturer?examSessionId=42");
+    return response(data);
+  });
+  assert.deepEqual(await api.getLecturerDashboard(42), data);
+});
+
+test("request submission sends the documented body once and preserves decision timestamps", async () => {
+  const input = { periodId: 4, courseCode: "DEMO101", examSessionId: null, proposedChange: "Review date", reason: "Academic event" };
+  const row = { request_id: 3, status: "PENDING", created_at: "2026-09-30T12:00:00Z", decided_at: null, decision: null };
+  const calls = [];
+  const { api } = client(async (url, init) => {
+    calls.push(url);
+    assert.equal(url, "/api/examination-change-requests");
+    assert.equal(init.method, "POST");
+    assert.deepEqual(JSON.parse(init.body), input);
+    return response(row);
+  });
+  assert.deepEqual(await api.submitChangeRequest(input), row);
+  assert.equal(calls.length, 1);
+});
+
+test("a rejected submission is not automatically replayed", async () => {
+  let calls = 0;
+  const { api } = client(async () => { calls++; return response(null, 401); });
+  await assert.rejects(api.submitChangeRequest({ periodId: 4, courseCode: "DEMO101", examSessionId: 12, proposedChange: "Review", reason: "Conflict" }), error => error.status === 401);
+  assert.equal(calls, 1);
+});
+
+test("notification inbox and mark-read use account-scoped endpoints", async () => {
+  const rows = [{ notification_id: 9, message: "Timetable amended", available_at: "2026-09-30T12:00:00Z", read_at: null }];
+  const calls = [];
+  const { api } = client(async (url, init) => {
+    calls.push(url);
+    assert.equal(init.headers.get("Authorization"), "Bearer access");
+    if (url.endsWith("/read")) { assert.equal(init.method, "POST"); return response(null); }
+    return response(rows);
+  });
+  assert.deepEqual(await api.listNotifications(), rows);
+  assert.equal(await api.markNotificationRead(9), null);
+  assert.deepEqual(calls, ["/api/examination-notifications", "/api/examination-notifications/9/read"]);
+});
+
+for (const status of [200, 401, 403]) {
+  test(`old account response (${status}) is discarded without retrying as the new account`, async () => {
+    let finish;
+    let started;
+    const requested = new Promise(resolve => { started = resolve; });
+    let calls = 0;
+    const { api } = client(() => { calls++; started(); return new Promise(resolve => { finish = resolve; }); });
+    const pending = api.listExams();
+    await requested;
+    api.saveSession("new-access", "new-refresh", "other@example.com");
+    finish(response([{ examSessionId: 1 }], status));
+    await assert.rejects(pending, /account changed/);
+    assert.equal(calls, 1);
+  });
+}
+
+test("unsuccessful envelopes do not become valid dashboard data", async () => {
+  const { api } = client(async () => Response.json({ success: false, message: "Not available", data: null }));
+  await assert.rejects(api.getLecturerDashboard(), /Not available/);
+});

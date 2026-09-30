@@ -30,7 +30,7 @@ export function LecturerProvider({ children }: { children: ReactNode }) {
         listAssignedCourses(), listExams(), getLecturerDashboard(), listCourseHierarchy(),
       ]);
       if (request !== generation.current) return;
-      setData({ courses, hierarchy, exams: exams.filter(exam => !denied.current.has(exam.examSessionId)), totals });
+      setData({ courses, hierarchy, exams: exams.filter(exam => exam.schedulePublished && courses.includes(exam.courseCode) && !denied.current.has(exam.examSessionId)), totals });
       setError("");
     } catch (reason) {
       if (request === generation.current) {
@@ -65,7 +65,7 @@ export function LecturerProvider({ children }: { children: ReactNode }) {
           <span className="mr-1 text-sm text-muted">My courses</span>
           {data.courses.map(code => <span key={code} className="rounded-full border border-unza-green/15 bg-unza-green/5 px-3 py-1 font-mono text-xs font-semibold text-unza-green">{code}</span>)}
         </div>
-        {data.exams.length === 0 ? <EmptyState message="No examinations available for your assigned courses." /> : children}
+        {data.exams.length === 0 ? <EmptyState message="No published examinations for your assigned courses." /> : children}
       </>}
     </LecturerContext.Provider>
   );

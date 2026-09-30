@@ -143,6 +143,8 @@ const ACCESS_TOKEN_TTL_MS = 5 * 60 * 1000;
 const REFRESH_THRESHOLD_MS = 90 * 1000;
 const KEEP_ALIVE_INTERVAL_MS = 30 * 1000;
 
+let accountGeneration = 0;
+
 let refreshPromise: Promise<string> | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
@@ -235,6 +237,7 @@ export function getStoredEmail() {
 }
 
 export function saveSession(accessToken: string, refreshToken: string, email?: string) {
+  if (email) accountGeneration++;
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   const expiresAt = getTokenExpiryMs(accessToken) ?? Date.now() + ACCESS_TOKEN_TTL_MS;
@@ -246,6 +249,7 @@ export function saveSession(accessToken: string, refreshToken: string, email?: s
 }
 
 export function clearSession() {
+  accountGeneration++;
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(ACCESS_EXPIRES_AT_KEY);
@@ -337,7 +341,16 @@ export async function bootstrapSession() {
 }
 
 async function authorizedFetch(path: string, init: RequestInit = {}, retry = true) {
+  const generation = accountGeneration;
+  const email = getStoredEmail();
+  function assertAccount() {
+    if (generation !== accountGeneration || email !== getStoredEmail() || !hasSession()) {
+      throw new Error("The signed-in account changed. Please try again.");
+    }
+  }
+  const hadSession = hasSession();
   const accessToken = await ensureValidAccessToken();
+  if (hadSession) assertAccount();
   const headers = new Headers(init.headers);
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   if (init.body && !headers.has("Content-Type")) {
@@ -351,6 +364,7 @@ async function authorizedFetch(path: string, init: RequestInit = {}, retry = tru
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError(SERVICE_UNAVAILABLE_MESSAGE, 0);
   }
+  if (hadSession) assertAccount();
   if (response.status === 401 && retry && hasSession()) {
     const nextToken = await refreshSession();
     headers.set("Authorization", `Bearer ${nextToken}`);
@@ -373,6 +387,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, retry 
   }
 
   const result = (await response.json()) as ApiEnvelope<T>;
+  if (!result.success) throw new ApiError(result.message || "The request failed.", response.status);
   return result.data;
 }
 
@@ -455,4 +470,51 @@ export async function downloadReport(examSessionId: number, signal?: AbortSignal
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+export type ChangeRequestRow = {
+  request_id: number;
+  period_id: number;
+  exam_session_id: number | null;
+  course_code: string;
+  proposed_change: string;
+  reason: string;
+  status: string;
+  decision: string | null;
+  created_at: string;
+  decided_at: string | null;
+};
+
+export type ChangeRequestInput = {
+  periodId: number;
+  courseCode: string;
+  examSessionId: number | null;
+  proposedChange: string;
+  reason: string;
+};
+
+export function listChangeRequests(periodId: number) {
+  return apiRequest<ChangeRequestRow[]>(`/api/examination-change-requests?periodId=${periodId}`);
+}
+
+export function submitChangeRequest(input: ChangeRequestInput) {
+  return apiRequest<ChangeRequestRow>("/api/examination-change-requests", {
+    method: "POST", body: JSON.stringify(input),
+  }, false);
+}
+
+// The notification inbox, like request history, is returned directly from JDBC.
+export type ExaminationNotification = {
+  notification_id: number;
+  message: string;
+  available_at: string;
+  read_at: string | null;
+};
+
+export function listNotifications() {
+  return apiRequest<ExaminationNotification[]>("/api/examination-notifications");
+}
+
+export function markNotificationRead(id: number) {
+  return apiRequest<null>(`/api/examination-notifications/${id}/read`, { method: "POST" });
 }

@@ -16,6 +16,7 @@ import { AttendancePage } from "./attendance-page";
 import { Brand } from "./brand";
 import { Dashboard } from "./dashboard";
 import { Exams } from "./exams";
+import { Notifications } from "./notifications";
 import { Reports } from "./reports";
 import { LecturerProvider } from "../lecturer-context";
 
@@ -117,6 +118,7 @@ export function AppShell({ onSignOut }: { onSignOut: () => void }) {
             </div>
           </div>
         </header>
+        <Notifications />
         <LecturerProvider>
           {view === "dashboard" && <Dashboard go={navigate} />}
           {view === "exams" && <Exams />}

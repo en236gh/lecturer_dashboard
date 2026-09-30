@@ -62,13 +62,18 @@ export function Dashboard({ go }: { go: (view: View) => void }) {
           accent="green"
         />
       </div>
+      {totals.examinations.filter(exam => exam.invalidAllocationRecords > 0).map(exam => (
+        <p key={exam.examSessionId} role="alert" className="rounded-[10px] bg-unza-red/5 p-4 text-sm text-unza-red">
+          {exam.courseCode} · Exam #{exam.examSessionId}: {exam.invalidAllocationRecords} invalid allocation records require Administrator follow-up.
+        </p>
+      ))}
       <div>
         <h2 className="text-lg font-semibold">Quick actions</h2>
         <p className="mt-1 text-sm text-muted">Move directly to your current examination tasks.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           {[
             {
-              title: "Manage examinations",
+              title: "Review examinations",
               copy: "Review schedules, venues and student allocation.",
               icon: CalendarDaysIcon,
               view: "exams" as View,
