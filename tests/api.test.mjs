@@ -56,6 +56,20 @@ test("report ownership rejection never saves a file", async () => {
   await assert.rejects(api.downloadReport(22), error => error.status === 403 && /not assigned/.test(error.message));
 });
 
+test("backend connection failures show a friendly service message", async () => {
+  const { api } = client(async () => { throw new TypeError("fetch failed"); });
+  await assert.rejects(api.listExams(), error =>
+    error.status === 0 && error.message === "The service is temporarily unavailable. Please try again shortly.",
+  );
+});
+
+test("backend server errors show a friendly service message", async () => {
+  const { api } = client(async () => response(null, 503, "upstream unavailable"));
+  await assert.rejects(api.listExams(), error =>
+    error.status === 503 && error.message === "The service is temporarily unavailable. Please try again shortly.",
+  );
+});
+
 test("a report finishing after its screen is closed is not saved", async () => {
   const controller = new AbortController();
   const { api } = client(async () => {
@@ -110,6 +124,38 @@ test("read requests retain the existing refresh-and-retry behavior", async () =>
   });
   await api.listExams();
   assert.deepEqual(urls, ["/api/exams", "/api/auth/refresh", "/api/exams"]);
+});
+
+test("bootstrap refreshes a missing access token before accepting the session", async () => {
+  const urls = [];
+  const { api, localStorage } = client(async url => {
+    urls.push(url);
+    return response({ accessToken: "renewed", refreshToken: "renewed-refresh" });
+  });
+  localStorage.removeItem("unza-lecturer-access-token");
+  localStorage.removeItem("unza-lecturer-access-expires-at");
+
+  assert.equal(await api.bootstrapSession(), true);
+  assert.deepEqual(urls, ["/api/auth/refresh"]);
+  assert.equal(localStorage.getItem("unza-lecturer-access-token"), "renewed");
+});
+
+test("bootstrap rejects an unavailable refresh without discarding the refresh token", async () => {
+  const { api, localStorage } = client(async () => response(null, 503, "upstream unavailable"));
+  localStorage.setItem("unza-lecturer-access-expires-at", "1");
+
+  await assert.rejects(api.bootstrapSession(), /temporarily unavailable/);
+  assert.equal(api.hasSession(), true);
+  assert.equal(localStorage.getItem("unza-lecturer-refresh-token"), "refresh");
+});
+
+test("bootstrap clears the session when the refresh token is rejected", async () => {
+  const { api, localStorage } = client(async () => response(null, 401, "expired"));
+  localStorage.setItem("unza-lecturer-access-expires-at", "1");
+
+  await assert.rejects(api.bootstrapSession(), /session has expired/i);
+  assert.equal(api.hasSession(), false);
+  assert.equal(localStorage.getItem("unza-lecturer-refresh-token"), null);
 });
 
 for (const status of [200, 401]) {

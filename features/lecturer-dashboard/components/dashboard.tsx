@@ -8,6 +8,7 @@ import {
   ClipboardDocumentCheckIcon,
   MapPinIcon,
   UsersIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { useLecturer } from "../lecturer-context";
 import type { View } from "../types";
@@ -45,6 +46,20 @@ export function Dashboard({ go }: { go: (view: View) => void }) {
           note={`${allocatedPercent} percent`}
           icon={<MapPinIcon className="h-6 w-6" />}
           accent="gold"
+        />
+        <StatTile
+          title="Unallocated"
+          value={String(totals.unallocatedStudents)}
+          note="Needs allocation"
+          icon={<UserGroupIcon className="h-6 w-6" />}
+          accent="red"
+        />
+        <StatTile
+          title="Attended"
+          value={String(totals.attendedStudents)}
+          note="Across exam sessions"
+          icon={<ClipboardDocumentCheckIcon className="h-6 w-6" />}
+          accent="green"
         />
       </div>
       <div>

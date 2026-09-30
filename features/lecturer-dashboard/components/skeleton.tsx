@@ -1,9 +1,42 @@
+import { Brand } from "./brand";
+
 function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       className={`animate-pulse rounded-[10px] bg-surface-muted ${className}`}
       aria-hidden
     />
+  );
+}
+
+export function LoginSkeleton() {
+  return (
+    <main className="min-h-screen bg-white lg:grid lg:grid-cols-2" aria-busy="true" aria-label="Loading sign-in">
+      <div className="grid min-h-[220px] place-items-center bg-ink px-6 lg:min-h-screen">
+        <Brand inverse />
+      </div>
+      <div className="flex items-center justify-center px-6 py-12 sm:px-12">
+        <div className="w-full max-w-md">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="mt-3 h-4 w-full max-w-sm" />
+          <Skeleton className="mt-2 h-4 w-3/4 max-w-xs" />
+          <div className="mt-8 space-y-5">
+            <div>
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-2 h-11 w-full rounded-md" />
+            </div>
+            <div>
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="mt-2 h-11 w-full rounded-md" />
+            </div>
+            <Skeleton className="h-11 w-full rounded-md bg-ink/15" />
+          </div>
+          <Skeleton className="mt-5 h-4 w-44" />
+          <Skeleton className="mt-12 h-px w-full" />
+          <Skeleton className="mt-5 h-3 w-full max-w-sm" />
+        </div>
+      </div>
+    </main>
   );
 }
 

@@ -6,11 +6,11 @@ import { toast } from "sonner";
 import { activateAccount, login, saveSession } from "@/lib/api";
 import { Brand } from "./brand";
 
-export function Login({ onAuthenticated }: { onAuthenticated: () => void }) {
+export function Login({ onAuthenticated, initialError = "" }: { onAuthenticated: () => void; initialError?: string }) {
   const [mode, setMode] = useState<"login" | "activate">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -7,6 +7,8 @@ export type ApiEnvelope<T> = {
 export type ExamStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED";
 
 export type ExamSession = {
+  periodId: number | null;
+  schedulePublished: boolean;
   examSessionId: number;
   courseCode: string;
   examDate: string;
@@ -23,6 +25,13 @@ export type LecturerDashboardTotals = {
   totalExaminations: number;
   registeredStudents: number;
   allocatedStudents: number;
+  unallocatedStudents: number;
+  attendedStudents: number;
+  examinations: Array<{
+    examSessionId: number;
+    courseCode: string;
+    invalidAllocationRecords: number;
+  }>;
   message?: string;
 };
 
@@ -47,6 +56,16 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+const SERVICE_UNAVAILABLE_MESSAGE = "The service is temporarily unavailable. Please try again shortly.";
+
+async function responseError(response: Response, fallback: string) {
+  if (response.status >= 500) {
+    return new ApiError(SERVICE_UNAVAILABLE_MESSAGE, response.status);
+  }
+  const error = await response.json().catch(() => null);
+  return new ApiError(error?.message ?? fallback, response.status);
 }
 
 export type RegisteredStudent = {
@@ -80,6 +99,9 @@ export type StudentAllocation = {
 };
 
 export type AllocationStats = {
+  unallocatedStudents: number;
+  attendedStudents: number;
+  invalidAllocationRecords: number;
   examSessionId: number;
   registeredStudents: number;
   allocatedStudents: number;
@@ -256,7 +278,7 @@ async function refreshSession() {
         body: JSON.stringify({ refreshToken }),
       });
     } catch {
-      throw new Error("Could not reach the server to refresh your session.");
+      throw new ApiError(SERVICE_UNAVAILABLE_MESSAGE, 0);
     }
 
     if (localStorage.getItem(REFRESH_TOKEN_KEY) !== refreshToken) {
@@ -268,7 +290,10 @@ async function refreshSession() {
         clearSession();
         throw new Error("Your session has expired. Please sign in again.");
       }
-      throw new Error("Could not refresh your session. Will retry automatically.");
+      if (response.status >= 500) {
+        throw new ApiError(SERVICE_UNAVAILABLE_MESSAGE, response.status);
+      }
+      throw new Error("Could not refresh your session. Please try again.");
     }
 
     const result = (await response.json()) as ApiEnvelope<{
@@ -279,6 +304,7 @@ async function refreshSession() {
       throw new Error("The signed-in account changed. Please try again.");
     }
     saveSession(result.data.accessToken, result.data.refreshToken);
+    window.dispatchEvent(new Event("unza-session-restored"));
     return result.data.accessToken;
   })().finally(() => {
     refreshPromise = null;
@@ -303,7 +329,7 @@ export async function bootstrapSession() {
   startSessionKeepAlive();
   scheduleProactiveRefresh();
 
-  if (shouldRefreshAccessToken()) {
+  if (!localStorage.getItem(ACCESS_TOKEN_KEY) || shouldRefreshAccessToken()) {
     await refreshSession();
   }
 
@@ -318,7 +344,13 @@ async function authorizedFetch(path: string, init: RequestInit = {}, retry = tru
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, { ...init, headers, cache: "no-store" });
+  let response: Response;
+  try {
+    response = await fetch(path, { ...init, headers, cache: "no-store" });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw new ApiError(SERVICE_UNAVAILABLE_MESSAGE, 0);
+  }
   if (response.status === 401 && retry && hasSession()) {
     const nextToken = await refreshSession();
     headers.set("Authorization", `Bearer ${nextToken}`);
@@ -337,8 +369,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, retry 
   const response = await authorizedFetch(path, init, retry);
 
   if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new ApiError(error?.message ?? `Request failed (${response.status})`, response.status);
+    throw await responseError(response, `Request failed (${response.status})`);
   }
 
   const result = (await response.json()) as ApiEnvelope<T>;
@@ -407,8 +438,7 @@ export async function downloadReport(examSessionId: number, signal?: AbortSignal
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new ApiError(error?.message ?? "Could not generate the report", response.status);
+    throw await responseError(response, "Could not generate the report");
   }
 
   const blob = await response.blob();

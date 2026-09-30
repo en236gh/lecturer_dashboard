@@ -1,5 +1,6 @@
 "use client";
 
+import { ChangeRequest } from "./change-request";
 import { BuildingOffice2Icon } from "@heroicons/react/24/outline";
 import { useEffect, useState } from "react";
 import {
@@ -153,6 +154,8 @@ function ExamDetails({ selectedId, examIds, onSelect, denyExam }: { selectedId: 
           <ErrorState message={detailError} onRetry={() => setReloadDetailKey((k) => k + 1)} />
         ) : (
           <>
+            <ChangeRequest exam={selected} />
+            <p className="text-sm text-muted">Unallocated: {allocation?.unallocatedStudents ?? "—"} · Attended: {allocation?.attendedStudents ?? "—"}{!!allocation?.invalidAllocationRecords && ` · ${allocation.invalidAllocationRecords} inconsistent historical allocation records require administrator review.`}</p>
             <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
               <div>
                 <div className="flex items-center gap-3">
